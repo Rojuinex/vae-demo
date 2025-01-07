@@ -8,43 +8,40 @@ class BetaVAE(VAE):
     def __init__(
         self,
         z_dim=2,
+        criterion: Literal["MSE", "BCE"] = "MSE",
         beta=5,
-        beta_schedule: Literal[
+        beta_scheduler: Literal[
             "constant",
             "linear-increasing",
-            "linear-decreasing",
             "cosine-increasing",
-            "cosine-decreasing",
         ] = "constant",
     ):
-        super(BetaVAE, self).__init__(z_dim=z_dim)
+        super(BetaVAE, self).__init__(z_dim=z_dim, criterion=criterion)
         self.beta = beta
-        self.beta_schedule = beta_schedule
+        self.beta_scheduler = beta_scheduler
 
     def _schedule_beta(self, current_step: int, max_steps: int):
-        if self.beta_schedule == "constant":
-            return
+        if self.beta_scheduler == "constant":
+            return 1.0
         
         if not hasattr(self, "_beta"):
             self._beta = self.beta
 
-        if self.beta_schedule == "linear-increasing":
-            self.beta = self._beta * torch.tensor(current_step / max_steps).float()
-        elif self.beta_schedule == "linear-decreasing":
-            self.beta = self._beta * torch.tensor(1 - current_step / max_steps).float()
-        elif self.beta_schedule == "cosine-increasing":
-            self.beta = self._beta * torch.tensor(
+        if self.beta_scheduler == "linear-increasing":
+            factor = torch.tensor(current_step / max_steps).float()
+        elif self.beta_scheduler == "cosine-increasing":
+            factor = torch.tensor(
                 0.5 * (1 + torch.cos(torch.tensor((1 - current_step / max_steps) * math.pi)))
-            ).float()
-        elif self.beta_schedule == "cosine-decreasing":
-            self.beta = self._beta * torch.tensor(
-                0.5 * (1 + torch.cos(torch.tensor(current_step / max_steps * math.pi)))
             ).float()
         else:
             raise ValueError("Invalid beta schedule")
+        
+        self.beta = self._beta * factor
+        return factor
 
     def loss(self, x, x_hat, mean, log_var):
         losses = super().loss(x, x_hat, mean, log_var)
+        losses["components"]["KLD/Unscaled"] = losses["components"]["KLD"]
         losses["components"]["KLD"] = self.beta * losses["components"]["KLD"]
-        losses["total_loss"] = losses["components"]["MSE"] + losses["components"]["KLD"]
+        losses["total_loss"] = losses["components"][self.criterion] + losses["components"]["KLD"]
         return losses

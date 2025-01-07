@@ -4,17 +4,18 @@ def train(
     batch_size: int,
     max_epochs: int | None,
     max_steps: int,
+    criterion: Literal["MSE", "BCE"],
     lr_scheduler: Literal["one_cycle", "reduce_on_plateau"],
     model_type: Literal["autoencoder", "vae", "beta-vae"],
     z_dim: int,
     beta: int | None,
-    beta_schedule: Literal[
+    beta_scheduler: Literal[
         "constant",
         "linear-increasing",
-        "linear-decreasing",
         "cosine-increasing",
-        "cosine-decreasing",
     ] = "constant",
+    latent_space_magnitude: int = 10,
+    latent_space_resolutions: list[int] = [10, 25, 50],
 ):
     if max_epochs is not None and max_steps > -1:
         raise ValueError("Only one of `max_epochs` or `max_steps` can be set")
@@ -45,11 +46,22 @@ def train(
     )
 
     if model_type == "autoencoder":
-        model = Autoencoder(z_dim=z_dim)
+        model = Autoencoder(
+            z_dim=z_dim,
+            criterion=criterion,
+        )
     elif model_type == "vae":
-        model = VAE(z_dim=z_dim)
+        model = VAE(
+            z_dim=z_dim,
+            criterion=criterion,
+        )
     elif model_type == "beta-vae":
-        model = BetaVAE(z_dim=z_dim, beta=beta, beta_schedule=beta_schedule)
+        model = BetaVAE(
+            z_dim=z_dim,
+            beta=beta,
+            beta_scheduler=beta_scheduler,
+            criterion=criterion
+        )
     else:
         raise ValueError("Invalid model type")
     
@@ -57,7 +69,12 @@ def train(
 
     summary(model, (batch_size, 1, 28, 28))
 
-    autoencoder = LitAutoencoder(model, lr_scheduler=lr_scheduler)
+    autoencoder = LitAutoencoder(
+        model,
+        lr_scheduler=lr_scheduler,
+        latent_space_magnitude=latent_space_magnitude,
+        latent_space_resolutions=latent_space_resolutions,
+    )
 
     # setup data
     dataset = MNIST(os.getcwd(), download=True, transform=ToTensor())
@@ -88,9 +105,10 @@ def train(
     log_name += f"--z_dim-{z_dim}"
     if beta is not None:
         log_name += f"--beta-{beta}"
-    if beta_schedule != "constant":
-        log_name += f"-{beta_schedule}"
+    if beta_scheduler is not None and beta_scheduler != "constant":
+        log_name += f"-{beta_scheduler}"
     log_name += f"--lr-{lr_scheduler}"
+    log_name += f"--{criterion}"
 
     logger = TensorBoardLogger(
         f"runs/{model_type}",
@@ -116,8 +134,6 @@ def train(
         dataloaders=test_loader
     )
 
-    print(eval_output)
-    
     hparams = {
         "batch_size": batch_size,
         "max_epochs": max_epochs,
@@ -126,7 +142,7 @@ def train(
         "model_type": model_type,
         "z_dim": z_dim,
         "beta": beta,
-        "beta_schedule": beta_schedule,
+        "beta_schedule": beta_scheduler,
     }
 
     logger.log_hyperparams(hparams, eval_output[0])

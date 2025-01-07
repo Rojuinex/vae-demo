@@ -1,21 +1,31 @@
+from typing import Literal
 import torch
 import torch.nn as nn
 from vae_demo.models.autoencoder import Autoencoder
 
 
 class VAE(Autoencoder):
-    def __init__(self, z_dim=2):
-        super(VAE, self).__init__(z_dim=z_dim)
+    def __init__(
+        self,
+        z_dim=2,
+        criterion: Literal["MSE", "BCE"] = "MSE",
+    ):
+        super(VAE, self).__init__(z_dim=z_dim, criterion=criterion)
         self.fc1 = nn.Linear(128, z_dim*2)
 
     def loss(self, x, x_hat, mean, log_var):
-        MSE = nn.functional.mse_loss(x_hat, x, reduction="sum")
+        if self.criterion == "BCE":
+            loss = nn.functional.binary_cross_entropy(x_hat, x, reduction="sum")
+        elif self.criterion == "MSE":
+            loss = nn.functional.mse_loss(x_hat, x, reduction="sum")
+        else: 
+            raise ValueError("Invalid criterion")
+
         KLD = -0.5 * torch.mean(1 + log_var - mean.pow(2) - log_var.exp())
-        loss = MSE+KLD
         return {
-            "total_loss": loss,
+            "total_loss": loss+KLD,
             "components": {
-                "MSE": MSE,
+                self.criterion: loss,
                 "KLD": KLD
             }
         }

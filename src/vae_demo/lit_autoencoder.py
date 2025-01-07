@@ -5,10 +5,18 @@ import lightning as L
 import numpy as np
 
 class LitAutoencoder(L.LightningModule):
-    def __init__(self, model, lr_scheduler: str = "reduce_on_plateau"):
+    def __init__(
+        self,
+        model,
+        lr_scheduler: str = "reduce_on_plateau",
+        latent_space_magnitude: int = 10,
+        latent_space_resolutions: list[int] = [10, 25, 50],
+    ):
         super().__init__()
         self.model = model
         self._lr_scheduler = lr_scheduler
+        self._latent_space_magnitude = latent_space_magnitude
+        self._latent_space_resolutions = sorted(latent_space_resolutions)
 
     def _loss(self, phase, *args):
         loss = self.model.loss(*args)
@@ -40,10 +48,12 @@ class LitAutoencoder(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         if hasattr(self.model, '_schedule_beta'):
-            self.model._schedule_beta(
+            factor = self.model._schedule_beta(
                 self.trainer.global_step,
                 self.trainer.max_steps,
             )
+            if factor is not None:
+                self.log(f"beta_scheduler", factor)
 
         if hasattr(self.model, 'beta'):
             self.log(f"beta", self.model.beta)
@@ -64,41 +74,20 @@ class LitAutoencoder(L.LightningModule):
         
         self.model.eval()
 
-        latent_range = 10
+        magnitude = self._latent_space_magnitude
 
         with torch.no_grad():
-            imgs = []
-            xv, yv = np.meshgrid(np.linspace(-latent_range, latent_range, 10), np.linspace(-latent_range, latent_range, 10))
-            for i in range(len(xv)):
-                for j in range(len(yv)):
-                    x, y = xv[i][j], yv[i][j]
-                    z = torch.tensor([x, y], dtype=torch.float32).unsqueeze(0).to(self.device)
-                    imgs.append(self.model.decode(z).squeeze(0))
+            for res in self._latent_space_resolutions:
+                imgs = []
+                xv, yv = np.meshgrid(np.linspace(-magnitude, magnitude, res), np.linspace(-magnitude, magnitude, res))
+                for i in range(len(xv)):
+                    for j in range(len(yv)):
+                        x, y = xv[i][j], yv[i][j]
+                        z = torch.tensor([x, y], dtype=torch.float32).unsqueeze(0).to(self.device)
+                        imgs.append(self.model.decode(z).squeeze(0))
 
-            ig = torchvision.utils.make_grid(imgs, nrow=len(xv))
-            self.logger.experiment.add_image(f"images/latent_space/x1", ig, self.global_step)
-
-            imgs = []
-            xv, yv = np.meshgrid(np.linspace(-latent_range, latent_range, 25), np.linspace(-latent_range, latent_range, 25))
-            for i in range(len(xv)):
-                for j in range(len(yv)):
-                    x, y = xv[i][j], yv[i][j]
-                    z = torch.tensor([x, y], dtype=torch.float32).unsqueeze(0).to(self.device)
-                    imgs.append(self.model.decode(z).squeeze(0))
-
-            ig = torchvision.utils.make_grid(imgs, nrow=len(xv))
-            self.logger.experiment.add_image(f"images/latent_space/x2", ig, self.global_step)
-
-            imgs = []
-            xv, yv = np.meshgrid(np.linspace(-latent_range, latent_range, 50), np.linspace(-latent_range, latent_range, 50))
-            for i in range(len(xv)):
-                for j in range(len(yv)):
-                    x, y = xv[i][j], yv[i][j]
-                    z = torch.tensor([x, y], dtype=torch.float32).unsqueeze(0).to(self.device)
-                    imgs.append(self.model.decode(z).squeeze(0))
-
-            ig = torchvision.utils.make_grid(imgs, nrow=len(xv))
-            self.logger.experiment.add_image(f"images/latent_space/x3", ig, self.global_step)
+                ig = torchvision.utils.make_grid(imgs, nrow=len(xv))
+                self.logger.experiment.add_image(f"images/latent_space/x{res}", ig, self.global_step)
         self.model.train()
 
 

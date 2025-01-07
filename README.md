@@ -35,9 +35,10 @@ uv sync
 
 ### Demo experiments
 
-To train the models using the configuration from the demo run
+To train the models using the configuration from the demo run.
+
 ```sh
-uv run vae-demo examples
+uv run vae-demo experiment
 ```
 
 ### Monitor training
@@ -80,3 +81,29 @@ Options:
   --model [autoencoder|vae]
   --help    
 ```
+
+## Experiment
+
+You can run trials for different combinations of hyperparameters with the experiment command. For example compare BetaVAE and VAE across a few different configurations.
+
+```sh
+uv run vae-demo experiment \
+    --model=vae \
+    --model=beta-vae \
+    --batch-size=64 \
+    --batch-size=32 \
+    --batch-size=10 \
+    --max-steps 5000 \
+    --beta 5 \
+    --beta 50 \
+    --beta 100 \
+    --beta-schedule=cosine-increasing \
+    --beta-schedule=linear-increasing \
+    --beta-schedule=constant \
+    --criterion=MSE \
+    --criterion=BCE \
+    --latent-space-magnitude=3 \
+    --latent-space-resolution=10
+```
+
+> Note: you can speed up training by reducing the number of latent space resolutions that are visualized during training with `--latent-space-resolution=10`

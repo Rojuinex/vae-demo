@@ -1,8 +1,14 @@
+from typing import Literal
 import torch.nn as nn
 
 class Autoencoder(nn.Module):
-    def __init__(self, z_dim=2):
+    def __init__(
+        self,
+        z_dim=2,
+        criterion: Literal["MSE", "BCE"] = "MSE",
+    ):
         super(Autoencoder, self).__init__()
+        self.criterion = criterion
         self.z_dim = z_dim
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1), # [1, 28, 28] -> [16, 14, 14]
@@ -39,11 +45,17 @@ class Autoencoder(nn.Module):
         )
 
     def loss(self, x, x_hat):
-        MSE = nn.functional.mse_loss(x_hat, x)
+        if self.criterion == "BCE":
+            loss = nn.functional.binary_cross_entropy(x_hat, x)
+        elif self.criterion == "MSE":
+            loss = nn.functional.mse_loss(x_hat, x)
+        else:
+            raise ValueError("Invalid criterion")
+
         return {
-            "total_loss": MSE,
+            "total_loss": loss,
             "components": {
-                "MSE": MSE
+                self.criterion: loss,
             }
         }
 
