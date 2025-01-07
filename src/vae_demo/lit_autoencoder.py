@@ -39,6 +39,15 @@ class LitAutoencoder(L.LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
+        if hasattr(self.model, '_schedule_beta'):
+            self.model._schedule_beta(
+                self.trainer.global_step,
+                self.trainer.max_steps,
+            )
+
+        if hasattr(self.model, 'beta'):
+            self.log(f"beta", self.model.beta)
+
         log_images = batch_idx % (self.trainer.estimated_stepping_batches // 10) == 0
         return self._step("train", batch, batch_idx, log_images)
     

@@ -43,6 +43,18 @@ def main():
     type=int,
     help="Beta parameter for beta-VAE models. Default is 5.",
 )
+@click.option(
+    "--beta-schedule",
+    default="constant",
+    type=click.Choice([
+        "constant",
+        "linear-increasing",
+        "linear-decreasing",
+        "cosine-increasing",
+        "cosine-decreasing",
+    ]),
+    help="Schedule for beta parameter. Default is `constant`.",
+)
 def cli_train(
     batch_size: int,
     max_epochs: int | None,
@@ -51,6 +63,7 @@ def cli_train(
     model: str,
     z_dim: int,
     beta: int | None,
+    beta_schedule: str,
 ):
     """Trains an autoencoder model.
     """
@@ -73,6 +86,7 @@ def cli_train(
         model_type=model,
         z_dim=z_dim,
         beta=beta,
+        beta_schedule=beta_schedule,
     )
 
 @main.command(name="examples")
@@ -109,6 +123,19 @@ def cli_train(
     type=int,
     help="Beta parameter for beta-VAE models. Default is 5.",
 )
+@click.option(
+    "--beta-schedule",
+    default=["constant"],
+    type=click.Choice([
+        "constant",
+        "linear-increasing",
+        "linear-decreasing",
+        "cosine-increasing",
+        "cosine-decreasing",
+    ]),
+    multiple=True,
+    help="Schedule for beta parameter. Default is `constant`.",
+)
 def cli_examples(
     batch_size: int,
     max_epochs: int | None,
@@ -116,6 +143,7 @@ def cli_examples(
     lr_scheduler: str,
     z_dim: int,
     beta: List[int] | None,
+    beta_schedule: List[str],
 ):
     """Trains multiple models for comparison."""
     from vae_demo.train import train
@@ -127,15 +155,17 @@ def cli_examples(
         max_steps = -1
 
     for b in beta:
-        train(
-            batch_size=batch_size,
-            max_epochs=max_epochs,
-            max_steps=max_steps,
-            lr_scheduler=lr_scheduler,
-            model_type="beta-vae",
-            z_dim=z_dim,
-            beta=b,
-        )
+        for bs in beta_schedule:
+            train(
+                batch_size=batch_size,
+                max_epochs=max_epochs,
+                max_steps=max_steps,
+                lr_scheduler=lr_scheduler,
+                model_type="beta-vae",
+                z_dim=z_dim,
+                beta=b,
+                beta_schedule=bs,
+            )
     train(
         batch_size=batch_size,
         max_epochs=max_epochs,

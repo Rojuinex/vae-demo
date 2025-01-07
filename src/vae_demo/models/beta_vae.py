@@ -1,45 +1,50 @@
+import math
+from typing import Literal
 import torch
-import torch.nn as nn
-from vae_demo.models.autoencoder import Autoencoder
+from vae_demo.models.vae import VAE
 
 
-class BetaVAE(Autoencoder):
-    def __init__(self, z_dim=2, beta=5):
+class BetaVAE(VAE):
+    def __init__(
+        self,
+        z_dim=2,
+        beta=5,
+        beta_schedule: Literal[
+            "constant",
+            "linear-increasing",
+            "linear-decreasing",
+            "cosine-increasing",
+            "cosine-decreasing",
+        ] = "constant",
+    ):
         super(BetaVAE, self).__init__(z_dim=z_dim)
         self.beta = beta
-        self.fc1 = nn.Linear(128, z_dim*2)
+        self.beta_schedule = beta_schedule
+
+    def _schedule_beta(self, current_step: int, max_steps: int):
+        if self.beta_schedule == "constant":
+            return
+        
+        if not hasattr(self, "_beta"):
+            self._beta = self.beta
+
+        if self.beta_schedule == "linear-increasing":
+            self.beta = self._beta * torch.tensor(current_step / max_steps).float()
+        elif self.beta_schedule == "linear-decreasing":
+            self.beta = self._beta * torch.tensor(1 - current_step / max_steps).float()
+        elif self.beta_schedule == "cosine-increasing":
+            self.beta = self._beta * torch.tensor(
+                0.5 * (1 + torch.cos(torch.tensor((1 - current_step / max_steps) * math.pi)))
+            ).float()
+        elif self.beta_schedule == "cosine-decreasing":
+            self.beta = self._beta * torch.tensor(
+                0.5 * (1 + torch.cos(torch.tensor(current_step / max_steps * math.pi)))
+            ).float()
+        else:
+            raise ValueError("Invalid beta schedule")
 
     def loss(self, x, x_hat, mean, log_var):
-        MSE = nn.functional.mse_loss(x_hat, x, reduction="sum")
-        KLD = self.beta * (-0.5 * torch.mean(1 + log_var - mean.pow(2) - log_var.exp()))
-        loss = MSE+KLD
-        return {
-            "total_loss": loss,
-            "components": {
-                "MSE": MSE,
-                "KLD": KLD
-            }
-        }
-
-    def reparameterize(self, mu, log_var):
-        std = log_var.mul(0.5).exp_()
-        esp = torch.randn(*mu.size()).to(mu.device)
-        z = mu + std * esp
-        return z
-    
-    def bottleneck(self, h):
-        x = self.fc1(h)
-        mu, log_var = x[:, :self.z_dim], x[:, self.z_dim:]
-        z = self.reparameterize(mu, log_var)
-        return z, mu, log_var
-
-    def encode(self, x):
-        h = self.encoder(x)
-        z, mu, log_var = self.bottleneck(h)
-        return z, mu, log_var
-
-    def forward(self, x):
-        z, mu, log_var = self.encode(x)
-        x_hat = self.decode(z)
-
-        return x_hat, mu, log_var
+        losses = super().loss(x, x_hat, mean, log_var)
+        losses["components"]["KLD"] = self.beta * losses["components"]["KLD"]
+        losses["total_loss"] = losses["components"]["MSE"] + losses["components"]["KLD"]
+        return losses
